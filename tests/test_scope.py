@@ -39,6 +39,17 @@ def test_bracketed_ipv6_targets_normalize():
     assert not guard.contains("[2001:dead::5]")
 
 
+def test_malformed_bracketed_targets_fail_closed():
+    guard = ScopeGuard(["::1"])
+    # A rogue suffix after the bracket must not ride in on an in-scope inner addr.
+    assert not guard.contains("[::1]evil.example.com")
+    assert not guard.contains("[::1]@evil.example.com")
+    assert not guard.contains("[::1]:80x")
+    # Unterminated bracket and a non-IP inner value are both denied.
+    assert not guard.contains("[::1")
+    assert not guard.contains("[example.com]")
+
+
 def test_host_port_and_url_forms_normalize():
     guard = ScopeGuard(["target.internal"])
     assert guard.contains("target.internal:8443")

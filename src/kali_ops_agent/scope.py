@@ -14,9 +14,13 @@ broadening scope means adding a specific, auditable entry.
 from __future__ import annotations
 
 import ipaddress
+import re
 from urllib.parse import urlparse
 
 from .errors import ScopeError
+
+# A bracketed IPv6 literal may be followed only by nothing or a ``:port``.
+_BRACKET_SUFFIX = re.compile(r":\d+\Z")
 
 
 def _target_host(target: str) -> str:
@@ -33,9 +37,20 @@ def _target_host(target: str) -> str:
         candidate = parsed.hostname or ""
     elif candidate.startswith("["):
         # Bracketed IPv6, optionally with a trailing :port after the bracket.
+        # Fail closed on any malformed form: an unterminated bracket, a suffix
+        # that is not a bare port, or an inner value that is not a valid IP.
+        # Returning "" here guarantees the target matches no allowlist entry,
+        # so a rogue suffix cannot ride in on an in-scope inner address.
         end = candidate.find("]")
-        if end != -1:
-            candidate = candidate[1:end]
+        if end == -1:
+            return ""
+        inner = candidate[1:end]
+        suffix = candidate[end + 1 :]
+        if suffix and not _BRACKET_SUFFIX.fullmatch(suffix):
+            return ""
+        if not _is_ip(inner):
+            return ""
+        candidate = inner
     elif candidate.count(":") == 1 and not _is_ipv6(candidate):
         # Bare host:port form (a single colon that is not itself an IPv6 addr).
         candidate = candidate.rsplit(":", 1)[0]
@@ -45,6 +60,14 @@ def _target_host(target: str) -> str:
 def _is_ipv6(value: str) -> bool:
     try:
         return isinstance(ipaddress.ip_address(value), ipaddress.IPv6Address)
+    except ValueError:
+        return False
+
+
+def _is_ip(value: str) -> bool:
+    try:
+        ipaddress.ip_address(value)
+        return True
     except ValueError:
         return False
 
