@@ -1,0 +1,31 @@
+version: 2
+updates:
+  # Keep GitHub Actions pinned-SHA references current. This is the ongoing
+  # maintenance for the SHA-pinning in .github/workflows/ci.yml: Dependabot
+  # opens PRs that bump each pinned commit to the latest release SHA.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+  # Python dependencies declared in pyproject.toml (core + optional extras).
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "build"
+    labels:
+      - "dependencies"
+      - "python"
+    groups:
+      # Batch dev/lint tooling bumps into one PR to reduce review churn.
+      dev-tooling:
+        patterns:
+          - "pytest*"
+          - "ruff"
