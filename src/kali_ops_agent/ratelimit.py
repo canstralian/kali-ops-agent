@@ -7,11 +7,22 @@ loop or a compromised caller cannot generate unbounded activity against a target
 
 from __future__ import annotations
 
+import math
 import threading
 import time
 from dataclasses import dataclass
 
 from .errors import RateLimitError
+
+
+def _positive_finite(value: float) -> bool:
+    """A usable rate/cost is a real, finite, strictly-positive number.
+
+    NaN and infinity must be rejected explicitly: ``nan <= 0`` is False, so a
+    naive positivity check lets a non-finite value through, and a NaN capacity
+    makes ``tokens < cost`` always False — silently disabling the safety budget.
+    """
+    return math.isfinite(value) and value > 0
 
 
 @dataclass
@@ -22,8 +33,8 @@ class BucketConfig:
     refill_per_sec: float = 1.0
 
     def __post_init__(self) -> None:
-        if self.capacity <= 0 or self.refill_per_sec <= 0:
-            raise ValueError("capacity and refill_per_sec must be positive")
+        if not _positive_finite(self.capacity) or not _positive_finite(self.refill_per_sec):
+            raise ValueError("capacity and refill_per_sec must be positive and finite")
 
 
 class _Bucket:
@@ -57,8 +68,8 @@ class TokenBucketLimiter:
         Raises:
             RateLimitError: if insufficient budget remains.
         """
-        if cost <= 0:
-            raise ValueError("cost must be positive")
+        if not _positive_finite(cost):
+            raise ValueError("cost must be positive and finite")
         now = self._clock()
         with self._lock:
             bucket = self._buckets.get(key)

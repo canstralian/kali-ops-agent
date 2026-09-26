@@ -37,3 +37,18 @@ def test_keys_are_independent():
 def test_invalid_config_rejected():
     with pytest.raises(ValueError):
         BucketConfig(capacity=0, refill_per_sec=1)
+
+
+def test_non_finite_config_rejected():
+    for bad in (float("nan"), float("inf")):
+        with pytest.raises(ValueError):
+            BucketConfig(capacity=bad, refill_per_sec=1)
+        with pytest.raises(ValueError):
+            BucketConfig(capacity=5, refill_per_sec=bad)
+
+
+def test_non_finite_cost_rejected():
+    limiter = TokenBucketLimiter(BucketConfig(capacity=5, refill_per_sec=1))
+    for bad in (float("nan"), float("inf"), 0, -1):
+        with pytest.raises(ValueError):
+            limiter.check("k:tool", cost=bad)

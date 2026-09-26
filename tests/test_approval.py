@@ -49,3 +49,21 @@ def test_expired_token_rejected():
 def test_empty_secret_rejected():
     with pytest.raises(ValueError):
         ApprovalAuthority(b"")
+
+
+def test_token_is_single_use():
+    auth = ApprovalAuthority(b"secret")
+    challenge = auth.challenge({"tool": "recon-stub", "target": "app.example.com"})
+    token = auth.sign(challenge)
+    auth.verify(challenge, token)  # first use succeeds
+    with pytest.raises(ApprovalError):
+        auth.verify(challenge, token)  # replay within TTL is rejected
+
+
+def test_missing_nonce_rejected():
+    auth = ApprovalAuthority(b"secret")
+    challenge = auth.challenge({"tool": "t", "target": "x"})
+    del challenge["nonce"]
+    token = auth.sign(challenge)  # signs the (nonce-less) challenge, so sig matches
+    with pytest.raises(ApprovalError):
+        auth.verify(challenge, token)

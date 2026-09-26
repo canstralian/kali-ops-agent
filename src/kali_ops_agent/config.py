@@ -35,8 +35,11 @@ class EngagementConfig(BaseModel):
         default_factory=list,
         description="Authorized targets (hosts, CIDRs, URLs). Empty denies all.",
     )
-    rate_capacity: float = Field(default=10.0, gt=0)
-    rate_refill_per_sec: float = Field(default=1.0, gt=0)
+    # allow_inf_nan=False is essential: Pydantic v2 accepts inf/NaN in float
+    # fields by default, and gt=0 does not reject them. A non-finite rate would
+    # silently disable the safety budget, so both fields must be finite.
+    rate_capacity: float = Field(default=10.0, gt=0, allow_inf_nan=False)
+    rate_refill_per_sec: float = Field(default=1.0, gt=0, allow_inf_nan=False)
     audit_path: str | None = Field(
         default=None, description="Optional JSONL path for the persisted audit log."
     )

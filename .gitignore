@@ -20,8 +20,11 @@ coverage.xml
 .ruff_cache/
 .mypy_cache/
 
-# Engagement artifacts — never commit real scope, secrets, or audit logs
+# Engagement artifacts — never commit real scope, secrets, or audit logs.
+# Ignore live engagement configs (engagement.json / *.local.json) but NOT the
+# checked-in template under examples/ (engagement.example.json).
 *.audit.jsonl
+engagement.json
 engagement.local.json
 .env
 *.secret

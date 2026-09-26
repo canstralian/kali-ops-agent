@@ -4,7 +4,9 @@ A high-impact action is not executed on the caller's say-so alone: the core
 issues a *challenge* describing exactly what would run, an approver signs that
 challenge with the engagement's shared secret, and the core verifies the
 signature before proceeding. Tokens are single-purpose (bound to the exact
-request payload) and time-boxed.
+request payload), time-boxed, and single-use: each challenge carries a random
+nonce that ``verify`` consumes on first success, so one sign-off authorizes one
+execution and a captured token cannot be replayed within its TTL.
 
 The secret never travels over the tool surface. It is provisioned out of band
 (e.g. an environment variable read by the deployer) and used only to mint and
@@ -16,6 +18,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import secrets
+import threading
 import time
 from dataclasses import dataclass
 
@@ -51,12 +55,17 @@ class ApprovalAuthority:
         self._secret = secret
         self._config = config or ApprovalConfig()
         self._clock = clock
+        # nonce -> expires_at, so a consumed token cannot be replayed until it
+        # would have expired anyway. Guarded by a lock for concurrent verifies.
+        self._used: dict[str, int] = {}
+        self._used_lock = threading.Lock()
 
     def challenge(self, action: dict[str, object]) -> dict[str, object]:
         """Build the payload an approver must sign for ``action``."""
         issued = int(self._clock())
         return {
             "action": action,
+            "nonce": secrets.token_hex(16),
             "issued_at": issued,
             "expires_at": issued + self._config.ttl_seconds,
         }
@@ -78,5 +87,16 @@ class ApprovalAuthority:
         expires_at = challenge.get("expires_at")
         if not isinstance(expires_at, int):
             raise ApprovalError("approval challenge is missing a valid expiry")
-        if self._clock() > expires_at:
+        now = self._clock()
+        if now > expires_at:
             raise ApprovalError("approval token has expired")
+        nonce = challenge.get("nonce")
+        if not isinstance(nonce, str) or not nonce:
+            raise ApprovalError("approval challenge is missing a valid nonce")
+        # Single-use: atomically reject an already-consumed nonce and record
+        # this one. Purge lapsed nonces so the set cannot grow without bound.
+        with self._used_lock:
+            self._used = {n: exp for n, exp in self._used.items() if exp > now}
+            if nonce in self._used:
+                raise ApprovalError("approval token has already been used")
+            self._used[nonce] = expires_at

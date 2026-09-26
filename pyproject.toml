@@ -24,7 +24,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-server = ["mcp>=1.2.0"]
+# Pinned below 2.0: MCP Python SDK v2 removed mcp.server.fastmcp.FastMCP, which
+# server.py imports. Lift this ceiling only alongside a migration to the v2 API.
+server = ["mcp>=1.2.0,<2"]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",

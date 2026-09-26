@@ -5,15 +5,25 @@ on:
     branches: ["**"]
   pull_request:
 
+# Least privilege: the default GITHUB_TOKEN is read-only for this workflow.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Do not leave the token in the local git config for later steps
+          # (which run repository code) to read.
+          persist-credentials: false
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5

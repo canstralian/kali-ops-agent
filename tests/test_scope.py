@@ -62,6 +62,18 @@ def test_malformed_bracketed_targets_fail_closed():
     assert not guard.contains("[example.com]")
 
 
+def test_scheme_prefixed_bracketed_ipv6_cannot_smuggle_a_host():
+    guard = ScopeGuard(["::1"])
+    # Same bypass class as the schemeless form, via a URL: the rogue suffix
+    # after `]` must not let the target match on the inner `::1`, and a
+    # malformed URL must fail closed rather than raise out of _target_host.
+    assert not guard.contains("http://[::1]evil.example.com/")
+    assert not guard.contains("http://[::1/")
+    assert not guard.contains("http://[::1]:80x/")
+    # A genuine in-scope bracketed URL is still allowed.
+    assert guard.contains("http://[::1]:8080/health")
+
+
 def test_host_port_and_url_forms_normalize():
     guard = ScopeGuard(["target.internal"])
     assert guard.contains("target.internal:8443")
