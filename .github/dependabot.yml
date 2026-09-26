@@ -29,3 +29,10 @@ updates:
         patterns:
           - "pytest*"
           - "ruff"
+    ignore:
+      # The `mcp` server extra is pinned <2 on purpose: MCP SDK v2 removed
+      # mcp.server.fastmcp.FastMCP, which server.py imports. Lifting the ceiling
+      # is a code migration, not a dependency bump, so suppress major-version
+      # widening here (security updates still come through).
+      - dependency-name: "mcp"
+        update-types: ["version-update:semver-major"]
