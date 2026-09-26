@@ -100,7 +100,10 @@ class GovernanceEngine:
             seq = self._record(principal, request, Decision.DENY, str(exc))
             return GovernanceResult(decision=Decision.DENY, reason=str(exc), audit_seq=seq)
 
-        # 3. Approval gate (before rate, so a NEEDS_APPROVAL round-trip costs no budget)
+        # 3. Approval gate: validate the token (no side effects). The single-use
+        #    nonce is *consumed* only at the end, after the rate gate, so an
+        #    approval is never burned by a request a later gate then denies.
+        approved_challenge: dict[str, object] | None = None
         if requires_approval:
             if self._approvals is None:
                 reason = "action requires approval but no approval authority is configured"
@@ -131,8 +134,8 @@ class GovernanceEngine:
                     approval_challenge=json.dumps(challenge, sort_keys=True),
                 )
             try:
-                challenge = self._parse_challenge(approval_challenge, bound_action)
-                self._approvals.verify(challenge, approval_token)
+                approved_challenge = self._parse_challenge(approval_challenge, bound_action)
+                self._approvals.verify(approved_challenge, approval_token)
             except ApprovalError as exc:
                 seq = self._record(principal, request, Decision.DENY, str(exc))
                 return GovernanceResult(
@@ -145,6 +148,15 @@ class GovernanceEngine:
         except RateLimitError as exc:
             seq = self._record(principal, request, Decision.DENY, str(exc))
             return GovernanceResult(decision=Decision.DENY, reason=str(exc), audit_seq=seq)
+
+        # 5. Spend the single-use approval token — last, so it is consumed only
+        #    for a request that is actually allowed.
+        if approved_challenge is not None:
+            try:
+                self._approvals.consume(approved_challenge)
+            except ApprovalError as exc:
+                seq = self._record(principal, request, Decision.DENY, str(exc))
+                return GovernanceResult(decision=Decision.DENY, reason=str(exc), audit_seq=seq)
 
         reason = "all governance checks passed"
         seq = self._record(principal, request, Decision.ALLOW, reason)

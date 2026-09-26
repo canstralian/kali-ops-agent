@@ -76,7 +76,11 @@ class ApprovalAuthority:
         return mac.hexdigest()
 
     def verify(self, challenge: dict[str, object], token: str) -> None:
-        """Verify a token against its challenge, fail closed on any mismatch.
+        """Validate a token's signature, expiry, and nonce presence.
+
+        This is side-effect free: it does NOT consume the single-use nonce, so
+        it is safe to call before later gates that might still deny the request.
+        Call :meth:`consume` once the action is otherwise authorized.
 
         Raises:
             ApprovalError: if the token is malformed, forged, or expired.
@@ -87,17 +91,36 @@ class ApprovalAuthority:
         expires_at = challenge.get("expires_at")
         if not isinstance(expires_at, int):
             raise ApprovalError("approval challenge is missing a valid expiry")
-        now = self._clock()
-        if now > expires_at:
+        if self._clock() > expires_at:
             raise ApprovalError("approval token has expired")
         nonce = challenge.get("nonce")
         if not isinstance(nonce, str) or not nonce:
             raise ApprovalError("approval challenge is missing a valid nonce")
-        # Single-use: atomically reject an already-consumed nonce and record
-        # this one. A token is still acceptable at exactly expires_at (the
-        # expiry check above uses ``>``), so a consumed nonce must be retained
-        # while ``exp >= now`` — purging with ``> now`` would drop it at that
-        # instant and allow one replay at the boundary.
+
+    def consume(self, challenge: dict[str, object]) -> None:
+        """Atomically spend a token's single-use nonce.
+
+        Called only when the request is otherwise authorized, so an approval is
+        never burned by a request a later gate (e.g. the rate budget) denies —
+        one sign-off then authorizes exactly one execution.
+
+        Raises:
+            ApprovalError: if the challenge is malformed/expired, or its nonce
+                has already been consumed.
+        """
+        expires_at = challenge.get("expires_at")
+        nonce = challenge.get("nonce")
+        if not isinstance(expires_at, int):
+            raise ApprovalError("approval challenge is missing a valid expiry")
+        if not isinstance(nonce, str) or not nonce:
+            raise ApprovalError("approval challenge is missing a valid nonce")
+        now = self._clock()
+        if now > expires_at:
+            raise ApprovalError("approval token has expired")
+        # A token is still acceptable at exactly expires_at (the check above
+        # uses ``>``), so a consumed nonce must be retained while ``exp >= now``;
+        # purging with ``> now`` would drop it at that instant and allow one
+        # replay at the boundary.
         with self._used_lock:
             self._used = {n: exp for n, exp in self._used.items() if exp >= now}
             if nonce in self._used:

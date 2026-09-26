@@ -51,13 +51,21 @@ def test_empty_secret_rejected():
         ApprovalAuthority(b"")
 
 
-def test_token_is_single_use():
+def test_verify_is_side_effect_free():
+    # verify() validates but does not consume, so it may be called repeatedly.
     auth = ApprovalAuthority(b"secret")
     challenge = auth.challenge({"tool": "recon-stub", "target": "app.example.com"})
     token = auth.sign(challenge)
-    auth.verify(challenge, token)  # first use succeeds
+    auth.verify(challenge, token)
+    auth.verify(challenge, token)  # still valid — consumption happens in consume()
+
+
+def test_consume_is_single_use():
+    auth = ApprovalAuthority(b"secret")
+    challenge = auth.challenge({"tool": "recon-stub", "target": "app.example.com"})
+    auth.consume(challenge)  # first spend succeeds
     with pytest.raises(ApprovalError):
-        auth.verify(challenge, token)  # replay within TTL is rejected
+        auth.consume(challenge)  # replay within TTL is rejected
 
 
 def test_missing_nonce_rejected():
@@ -73,8 +81,7 @@ def test_token_cannot_be_replayed_at_the_expiry_boundary():
     clock = FakeClock()
     auth = ApprovalAuthority(b"secret", ApprovalConfig(ttl_seconds=60), clock=clock)
     challenge = auth.challenge({"tool": "t", "target": "x"})
-    token = auth.sign(challenge)
     clock.t = challenge["expires_at"]  # exactly at expiry: still acceptable once
-    auth.verify(challenge, token)
+    auth.consume(challenge)
     with pytest.raises(ApprovalError):
-        auth.verify(challenge, token)  # the nonce must not be purged at this instant
+        auth.consume(challenge)  # the nonce must not be purged at this instant

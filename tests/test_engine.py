@@ -133,6 +133,45 @@ def test_approval_token_not_bound_to_tampered_arguments_is_denied():
     assert approved.decision is Decision.ALLOW
 
 
+def test_rate_denied_request_does_not_spend_the_approval_token():
+    approvals = ApprovalAuthority(b"secret")
+    clock = {"t": 0.0}
+    limiter = TokenBucketLimiter(
+        BucketConfig(capacity=1, refill_per_sec=1), clock=lambda: clock["t"]
+    )
+    engine = GovernanceEngine(
+        scope=ScopeGuard(["app.example.com"]),
+        limiter=limiter,
+        audit=AuditLog(),
+        approvals=approvals,
+    )
+    principal, request = _principal(), _request()
+
+    engine.evaluate(principal, request)  # drain the single rate token
+    pending = engine.evaluate(principal, request, requires_approval=True)
+    token = approvals.sign(json.loads(pending.approval_challenge))
+    challenge = pending.approval_challenge
+
+    denied = engine.evaluate(
+        principal,
+        request,
+        requires_approval=True,
+        approval_token=token,
+        approval_challenge=challenge,
+    )
+    assert denied.decision is Decision.DENY  # rate-limited, token NOT spent
+
+    clock["t"] = 5.0  # budget refills
+    allowed = engine.evaluate(
+        principal,
+        request,
+        requires_approval=True,
+        approval_token=token,
+        approval_challenge=challenge,
+    )
+    assert allowed.decision is Decision.ALLOW  # same token still works
+
+
 def test_needs_approval_does_not_consume_rate_budget():
     approvals = ApprovalAuthority(b"secret")
     engine = _engine(approvals=approvals, capacity=1)
