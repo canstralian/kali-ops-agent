@@ -39,6 +39,18 @@ def test_bracketed_ipv6_targets_normalize():
     assert not guard.contains("[2001:dead::5]")
 
 
+def test_userinfo_authority_cannot_smuggle_out_of_scope_host():
+    guard = ScopeGuard(["lab.internal", "10.10.0.0/24"])
+    # The residual authority (after the userinfo '@') is the REAL host and is
+    # out of scope; the in-scope-looking left-hand side must not grant access.
+    assert not guard.contains("lab.internal:22@evil.com")
+    assert not guard.contains("10.10.0.5:22@evil.com")
+    assert not guard.contains("http://lab.internal:22@evil.com/x")
+    # A genuine in-scope host:port is still allowed.
+    assert guard.contains("lab.internal:22")
+    assert guard.contains("10.10.0.5:8443")
+
+
 def test_malformed_bracketed_targets_fail_closed():
     guard = ScopeGuard(["::1"])
     # A rogue suffix after the bracket must not ride in on an in-scope inner addr.

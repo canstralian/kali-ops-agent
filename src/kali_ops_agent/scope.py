@@ -14,54 +14,41 @@ broadening scope means adding a specific, auditable entry.
 from __future__ import annotations
 
 import ipaddress
-import re
-from urllib.parse import urlparse
+from urllib.parse import urlsplit
 
 from .errors import ScopeError
 
-# A bracketed IPv6 literal may be followed only by nothing or a ``:port``.
-_BRACKET_SUFFIX = re.compile(r":\d+\Z")
-
 
 def _target_host(target: str) -> str:
-    """Extract a comparable host from a host, URL, or IP string.
+    """Extract the real host from a host, ``host:port``, URL, or IP string.
 
-    Handles bare hosts, ``host:port``, scheme-prefixed URLs, and bracketed
-    IPv6 literals (``[::1]`` / ``[::1]:8443``). ``urlparse`` already unwraps
-    the brackets on scheme-prefixed IPv6 URLs; the explicit handling below
-    covers the bracketed forms that arrive without a scheme.
+    The whole target is parsed as a URL authority — bare or scheme-relative
+    forms are given a ``//`` prefix — so that userinfo, ports, and bracketed
+    IPv6 literals all resolve to the *actual* host. This is the security-
+    critical part: a naive ``split(":")`` would read ``in-scope:22@out-of-scope``
+    as the in-scope left-hand side, letting an out-of-scope authority ride past
+    the allowlist while the raw target string still points at the real host.
+    Parsing the authority resolves such a string to ``out-of-scope`` instead.
+
+    Any malformed authority (an unterminated IPv6 bracket, a non-numeric port,
+    a bracketed non-IP) raises during parsing and is failed closed by returning
+    ``""``, which matches no allowlist entry.
     """
     candidate = target.strip()
-    if "://" in candidate:
-        parsed = urlparse(candidate)
-        candidate = parsed.hostname or ""
-    elif candidate.startswith("["):
-        # Bracketed IPv6, optionally with a trailing :port after the bracket.
-        # Fail closed on any malformed form: an unterminated bracket, a suffix
-        # that is not a bare port, or an inner value that is not a valid IP.
-        # Returning "" here guarantees the target matches no allowlist entry,
-        # so a rogue suffix cannot ride in on an in-scope inner address.
-        end = candidate.find("]")
-        if end == -1:
-            return ""
-        inner = candidate[1:end]
-        suffix = candidate[end + 1 :]
-        if suffix and not _BRACKET_SUFFIX.fullmatch(suffix):
-            return ""
-        if not _is_ip(inner):
-            return ""
-        candidate = inner
-    elif candidate.count(":") == 1 and not _is_ipv6(candidate):
-        # Bare host:port form (a single colon that is not itself an IPv6 addr).
-        candidate = candidate.rsplit(":", 1)[0]
-    return candidate.lower().rstrip(".")
-
-
-def _is_ipv6(value: str) -> bool:
+    if not candidate:
+        return ""
+    # A bare, unbracketed IP literal (v4 or v6) is used directly; urlsplit would
+    # otherwise misread an unbracketed IPv6 address's colons as a port.
+    if _is_ip(candidate):
+        return candidate.lower()
+    to_parse = candidate if "://" in candidate else "//" + candidate
     try:
-        return isinstance(ipaddress.ip_address(value), ipaddress.IPv6Address)
+        parts = urlsplit(to_parse)
+        host = parts.hostname or ""
+        _ = parts.port  # raises ValueError on a non-numeric / out-of-range port
     except ValueError:
-        return False
+        return ""
+    return host.lower().rstrip(".")
 
 
 def _is_ip(value: str) -> bool:
