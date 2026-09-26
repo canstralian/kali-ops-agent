@@ -40,7 +40,14 @@ jobs:
           python - <<'PY' > runtime-requirements.txt
           import pathlib, tomllib
           data = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
-          for dep in data["project"]["dependencies"]:
+          project = data["project"]
+          # Everything that actually ships when the server runs: the base
+          # dependencies plus the "server" extra (mcp), which the console
+          # script (kali_ops_agent.server:main) requires. The "dev" extra is
+          # test/lint tooling that never ships, so it is intentionally left out.
+          reqs = list(project.get("dependencies", []))
+          reqs += project.get("optional-dependencies", {}).get("server", [])
+          for dep in reqs:
               print(dep)
           PY
           echo "Auditing:" && cat runtime-requirements.txt
