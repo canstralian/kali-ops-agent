@@ -41,12 +41,20 @@ def _target_host(target: str) -> str:
     # otherwise misread an unbracketed IPv6 address's colons as a port.
     if _is_ip(candidate):
         return candidate.lower()
-    to_parse = candidate if "://" in candidate else "//" + candidate
+    scheme_prefixed = "://" in candidate
+    to_parse = candidate if scheme_prefixed else "//" + candidate
     try:
         parts = urlsplit(to_parse)
         host = parts.hostname or ""
         _ = parts.port  # raises ValueError on a non-numeric / out-of-range port
     except ValueError:
+        return ""
+    # A schemeless target must be a bare authority (host[:port]). If urlsplit
+    # peeled off a path/query/fragment, the input was not a clean authority —
+    # e.g. a CIDR like "10.0.0.0/24" whose "/24" would be silently dropped, or
+    # a "host/path" form — so fail closed instead of matching the bare host.
+    # (CIDR *range* targets are handled explicitly in ScopeGuard.contains.)
+    if not scheme_prefixed and (parts.path or parts.query or parts.fragment):
         return ""
     return host.lower().rstrip(".")
 
@@ -57,6 +65,20 @@ def _is_ip(value: str) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _as_network(value: str):
+    """Return the ip_network for an explicit CIDR target, else None.
+
+    Only a value carrying an explicit prefix ("/") is treated as a range; a
+    bare address is a single host, matched through the host path instead.
+    """
+    if "/" not in value:
+        return None
+    try:
+        return ipaddress.ip_network(value, strict=False)
+    except ValueError:
+        return None
 
 
 def _matches_entry(host: str, entry: str) -> bool:
@@ -73,6 +95,18 @@ def _matches_entry(host: str, entry: str) -> bool:
     return host == entry
 
 
+def _entry_contains_network(entry: str, network) -> bool:
+    """Whether an allowlist CIDR entry fully contains ``network`` (a range target)."""
+    entry = entry.strip()
+    try:
+        entry_net = ipaddress.ip_network(entry, strict=False)
+    except ValueError:
+        return False
+    if entry_net.version != network.version:
+        return False
+    return network.subnet_of(entry_net)
+
+
 class ScopeGuard:
     """Holds the authorized scope for one engagement and answers membership."""
 
@@ -85,6 +119,13 @@ class ScopeGuard:
         return list(self._allowed)
 
     def contains(self, target: str) -> bool:
+        # A CIDR *range* target (e.g. "10.0.0.0/24") is in scope only if the
+        # whole range is contained in an allowlisted network. This is the guard
+        # against range-smuggling: "10.0.0.5/0" must not pass just because its
+        # base address would.
+        network = _as_network(target.strip())
+        if network is not None:
+            return any(_entry_contains_network(entry, network) for entry in self._allowed)
         host = _target_host(target)
         if not host:
             return False

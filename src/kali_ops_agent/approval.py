@@ -94,9 +94,12 @@ class ApprovalAuthority:
         if not isinstance(nonce, str) or not nonce:
             raise ApprovalError("approval challenge is missing a valid nonce")
         # Single-use: atomically reject an already-consumed nonce and record
-        # this one. Purge lapsed nonces so the set cannot grow without bound.
+        # this one. A token is still acceptable at exactly expires_at (the
+        # expiry check above uses ``>``), so a consumed nonce must be retained
+        # while ``exp >= now`` — purging with ``> now`` would drop it at that
+        # instant and allow one replay at the boundary.
         with self._used_lock:
-            self._used = {n: exp for n, exp in self._used.items() if exp > now}
+            self._used = {n: exp for n, exp in self._used.items() if exp >= now}
             if nonce in self._used:
                 raise ApprovalError("approval token has already been used")
             self._used[nonce] = expires_at

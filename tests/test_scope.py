@@ -62,6 +62,20 @@ def test_malformed_bracketed_targets_fail_closed():
     assert not guard.contains("[example.com]")
 
 
+def test_cidr_range_target_must_be_fully_in_scope():
+    guard = ScopeGuard(["10.10.0.0/24"])
+    # A range target is allowed only if the whole range is contained in scope.
+    assert guard.contains("10.10.0.0/24")   # exact
+    assert guard.contains("10.10.0.5/25")   # a subnet of the allowed /24
+    # Range-smuggling: a wider (or unrelated) range whose base address is in
+    # scope must NOT pass — the /24 (or /0) suffix cannot be silently dropped.
+    assert not guard.contains("10.10.0.5/0")   # the whole IPv4 internet
+    assert not guard.contains("10.10.0.0/8")   # a superset of the /24
+    assert not guard.contains("10.20.0.0/24")  # unrelated range
+    # A schemeless host with a stray path is not a clean authority → denied.
+    assert not ScopeGuard(["app.example.com"]).contains("app.example.com/../evil")
+
+
 def test_scheme_prefixed_bracketed_ipv6_cannot_smuggle_a_host():
     guard = ScopeGuard(["::1"])
     # Same bypass class as the schemeless form, via a URL: the rogue suffix

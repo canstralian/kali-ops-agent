@@ -67,3 +67,14 @@ def test_missing_nonce_rejected():
     token = auth.sign(challenge)  # signs the (nonce-less) challenge, so sig matches
     with pytest.raises(ApprovalError):
         auth.verify(challenge, token)
+
+
+def test_token_cannot_be_replayed_at_the_expiry_boundary():
+    clock = FakeClock()
+    auth = ApprovalAuthority(b"secret", ApprovalConfig(ttl_seconds=60), clock=clock)
+    challenge = auth.challenge({"tool": "t", "target": "x"})
+    token = auth.sign(challenge)
+    clock.t = challenge["expires_at"]  # exactly at expiry: still acceptable once
+    auth.verify(challenge, token)
+    with pytest.raises(ApprovalError):
+        auth.verify(challenge, token)  # the nonce must not be purged at this instant
