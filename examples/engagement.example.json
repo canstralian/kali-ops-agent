@@ -1,0 +1,10 @@
+{
+  "engagement_id": "example-lab-2026",
+  "scope": [
+    "lab.internal",
+    "10.10.0.0/24"
+  ],
+  "rate_capacity": 10.0,
+  "rate_refill_per_sec": 1.0,
+  "audit_path": "example-lab-2026.audit.jsonl"
+}
