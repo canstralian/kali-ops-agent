@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Tooling
+.ruff_cache/
+.mypy_cache/
+
+# Engagement artifacts — never commit real scope, secrets, or audit logs
+*.audit.jsonl
+engagement.local.json
+.env
+*.secret
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store

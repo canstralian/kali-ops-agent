@@ -1,0 +1,41 @@
+import pytest
+
+from kali_ops_agent.errors import ScopeError
+from kali_ops_agent.scope import ScopeGuard
+
+
+def test_exact_host_in_scope():
+    guard = ScopeGuard(["app.example.com"])
+    assert guard.contains("app.example.com")
+    guard.enforce("https://app.example.com/login")
+
+
+def test_out_of_scope_is_hard_blocked():
+    guard = ScopeGuard(["app.example.com"])
+    assert not guard.contains("evil.example.net")
+    with pytest.raises(ScopeError):
+        guard.enforce("evil.example.net")
+
+
+def test_empty_allowlist_denies_everything():
+    guard = ScopeGuard([])
+    assert not guard.contains("anything.local")
+    with pytest.raises(ScopeError):
+        guard.enforce("anything.local")
+
+
+def test_cidr_matches_literal_ip():
+    guard = ScopeGuard(["10.0.0.0/24"])
+    assert guard.contains("10.0.0.5")
+    assert not guard.contains("10.0.1.5")
+
+
+def test_host_port_and_url_forms_normalize():
+    guard = ScopeGuard(["target.internal"])
+    assert guard.contains("target.internal:8443")
+    assert guard.contains("http://target.internal:8080/api")
+
+
+def test_case_and_trailing_dot_insensitive():
+    guard = ScopeGuard(["Target.Example.COM."])
+    assert guard.contains("target.example.com")
