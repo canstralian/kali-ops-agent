@@ -108,10 +108,15 @@ class GovernanceEngine:
                 return GovernanceResult(
                     decision=Decision.DENY, reason=reason, audit_seq=seq
                 )
+            # Bind the FULL request payload — including arguments — so a token
+            # signed for one payload cannot authorize a different one on the
+            # token-bearing retry. arguments is sorted into a plain dict so the
+            # binding is order-independent and JSON round-trips cleanly.
             bound_action = {
                 "tool": request.tool,
                 "target": request.target,
                 "action": request.action,
+                "arguments": dict(sorted(request.arguments.items())),
                 "engagement_id": principal.engagement_id,
             }
             if not approval_token:
@@ -163,6 +168,7 @@ class GovernanceEngine:
             raise ApprovalError("approval challenge is not valid JSON") from exc
         if not isinstance(challenge, dict) or challenge.get("action") != bound_action:
             raise ApprovalError(
-                "approval token is not bound to this tool, target, and engagement"
+                "approval token is not bound to this exact request "
+                "(tool, target, action, arguments, and engagement)"
             )
         return challenge

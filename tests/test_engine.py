@@ -101,6 +101,38 @@ def test_approval_token_not_bound_to_a_different_target_is_denied():
     assert replayed.decision is Decision.DENY
 
 
+def test_approval_token_not_bound_to_tampered_arguments_is_denied():
+    approvals = ApprovalAuthority(b"secret")
+    engine = _engine(approvals=approvals)
+
+    benign = ToolRequest(tool="recon-stub", target="app.example.com", arguments={"n": "1"})
+    pending = engine.evaluate(_principal(), benign, requires_approval=True)
+    token = approvals.sign(json.loads(pending.approval_challenge))
+
+    # Same signed challenge/token, but a different arguments payload.
+    tampered = ToolRequest(
+        tool="recon-stub", target="app.example.com", arguments={"n": "1", "cmd": "evil"}
+    )
+    replayed = engine.evaluate(
+        _principal(),
+        tampered,
+        requires_approval=True,
+        approval_token=token,
+        approval_challenge=pending.approval_challenge,
+    )
+    assert replayed.decision is Decision.DENY
+
+    # The originally-signed arguments still verify.
+    approved = engine.evaluate(
+        _principal(),
+        ToolRequest(tool="recon-stub", target="app.example.com", arguments={"n": "1"}),
+        requires_approval=True,
+        approval_token=token,
+        approval_challenge=pending.approval_challenge,
+    )
+    assert approved.decision is Decision.ALLOW
+
+
 def test_needs_approval_does_not_consume_rate_budget():
     approvals = ApprovalAuthority(b"secret")
     engine = _engine(approvals=approvals, capacity=1)
