@@ -10,5 +10,6 @@ must never call out before the engine has allowed the request.
 from __future__ import annotations
 
 from .example import GovernedTool, ReconStub
+from .tcp_connect import TcpConnectTool
 
-__all__ = ["GovernedTool", "ReconStub"]
+__all__ = ["GovernedTool", "ReconStub", "TcpConnectTool"]

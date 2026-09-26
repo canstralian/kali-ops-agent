@@ -19,7 +19,7 @@ from .engine import GovernanceEngine
 from .models import AuthorityTier, Principal
 from .ratelimit import TokenBucketLimiter
 from .scope import ScopeGuard
-from .tools import ReconStub
+from .tools import ReconStub, TcpConnectTool
 
 
 def build_engine(config: EngagementConfig) -> GovernanceEngine:
@@ -50,6 +50,7 @@ def create_server(config: EngagementConfig):
 
     engine = build_engine(config)
     recon = ReconStub(engine)
+    tcp_connect_tool = TcpConnectTool(engine)
     mcp = FastMCP("kali-ops-agent")
 
     # The principal is bound to the server's engagement context, NOT taken from a
@@ -71,6 +72,16 @@ def create_server(config: EngagementConfig):
         Replace with a real, authorized adapter per engagement.
         """
         return recon.run(principal, target, action=action)
+
+    @mcp.tool()
+    def tcp_connect(target: str, port: int) -> dict:
+        """Probe one TCP port on an in-scope target (open/closed/filtered).
+
+        A benign, non-intrusive recon primitive: it performs a single TCP
+        connect and sends no payload. The target is scope-checked by the
+        governance engine, and the probe connects only to that authorized host.
+        """
+        return tcp_connect_tool.run(principal, target, arguments={"port": str(port)})
 
     return mcp
 

@@ -70,9 +70,12 @@ export KALI_OPS_APPROVAL_SECRET="<engagement secret>"   # optional, for approval
 python -m kali_ops_agent --config examples/engagement.example.json
 ```
 
-The example engagement authorizes a single lab host and exposes the benign
-`recon_stub` tool, which exercises the entire governance path but performs no
-network I/O.
+The example engagement authorizes a single lab host and exposes two governed
+tools: `recon_stub` (a no-op template that exercises the entire governance path)
+and `tcp_connect` — a real, benign recon primitive that probes one TCP port on
+an in-scope target (open/closed/filtered) and connects only to the host the
+engine authorized. See `src/kali_ops_agent/tools/tcp_connect.py` for the
+reference adapter pattern.
 
 ### Use the core directly
 
