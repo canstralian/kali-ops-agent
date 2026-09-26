@@ -20,13 +20,24 @@ from .errors import ScopeError
 
 
 def _target_host(target: str) -> str:
-    """Extract a comparable host from a host, URL, or IP string."""
+    """Extract a comparable host from a host, URL, or IP string.
+
+    Handles bare hosts, ``host:port``, scheme-prefixed URLs, and bracketed
+    IPv6 literals (``[::1]`` / ``[::1]:8443``). ``urlparse`` already unwraps
+    the brackets on scheme-prefixed IPv6 URLs; the explicit handling below
+    covers the bracketed forms that arrive without a scheme.
+    """
     candidate = target.strip()
     if "://" in candidate:
         parsed = urlparse(candidate)
         candidate = parsed.hostname or ""
-    # Strip a trailing :port if present on a bare host:port form.
-    if candidate.count(":") == 1 and not _is_ipv6(candidate):
+    elif candidate.startswith("["):
+        # Bracketed IPv6, optionally with a trailing :port after the bracket.
+        end = candidate.find("]")
+        if end != -1:
+            candidate = candidate[1:end]
+    elif candidate.count(":") == 1 and not _is_ipv6(candidate):
+        # Bare host:port form (a single colon that is not itself an IPv6 addr).
         candidate = candidate.rsplit(":", 1)[0]
     return candidate.lower().rstrip(".")
 

@@ -25,6 +25,12 @@ class EngagementConfig(BaseModel):
     """Declarative description of one authorized engagement."""
 
     engagement_id: str = Field(..., min_length=1)
+    operator_id: str = Field(
+        default="operator",
+        min_length=1,
+        description="Identity bound to server-issued requests (audit + rate key). "
+        "Set per engagement; production should bind to the authenticated session.",
+    )
     scope: list[str] = Field(
         default_factory=list,
         description="Authorized targets (hosts, CIDRs, URLs). Empty denies all.",

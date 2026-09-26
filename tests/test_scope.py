@@ -30,6 +30,15 @@ def test_cidr_matches_literal_ip():
     assert not guard.contains("10.0.1.5")
 
 
+def test_bracketed_ipv6_targets_normalize():
+    guard = ScopeGuard(["::1", "2001:db8::/32"])
+    assert guard.contains("[::1]")
+    assert guard.contains("[::1]:8443")
+    assert guard.contains("http://[::1]:8080/health")
+    assert guard.contains("[2001:db8::5]")
+    assert not guard.contains("[2001:dead::5]")
+
+
 def test_host_port_and_url_forms_normalize():
     guard = ScopeGuard(["target.internal"])
     assert guard.contains("target.internal:8443")

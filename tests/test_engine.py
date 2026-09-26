@@ -47,17 +47,77 @@ def test_low_authority_denied():
     assert result.decision is Decision.DENY
 
 
-def test_needs_approval_then_allow_with_token():
-    approvals = ApprovalAuthority(b"secret")
+class _AdvancingClock:
+    """Clock that advances one second on every read, to prove tokens survive
+    a clock tick between the challenge call and the token-bearing call."""
+
+    def __init__(self, start=1000.0):
+        self.t = start
+
+    def __call__(self):
+        now = self.t
+        self.t += 1.0
+        return now
+
+
+def test_needs_approval_then_allow_with_token_across_a_clock_tick():
+    approvals = ApprovalAuthority(b"secret", clock=_AdvancingClock())
     engine = _engine(approvals=approvals)
 
     pending = engine.evaluate(_principal(), _request(), requires_approval=True)
     assert pending.decision is Decision.NEEDS_APPROVAL
-    challenge = json.loads(pending.approval_challenge)
-    token = approvals.sign(challenge)
+    challenge_json = pending.approval_challenge
+    token = approvals.sign(json.loads(challenge_json))
 
+    # The token-bearing call happens after the clock has advanced; the signed
+    # challenge is echoed back verbatim, so it must still verify.
     approved = engine.evaluate(
-        _principal(), _request(), requires_approval=True, approval_token=token
+        _principal(),
+        _request(),
+        requires_approval=True,
+        approval_token=token,
+        approval_challenge=challenge_json,
+    )
+    assert approved.decision is Decision.ALLOW
+
+
+def test_approval_token_not_bound_to_a_different_target_is_denied():
+    approvals = ApprovalAuthority(b"secret")
+    engine = _engine(scope=("app.example.com", "api.example.com"), approvals=approvals)
+
+    pending = engine.evaluate(
+        _principal(), _request(target="app.example.com"), requires_approval=True
+    )
+    token = approvals.sign(json.loads(pending.approval_challenge))
+
+    # Same signed challenge, but replayed against a different in-scope target.
+    replayed = engine.evaluate(
+        _principal(),
+        _request(target="api.example.com"),
+        requires_approval=True,
+        approval_token=token,
+        approval_challenge=pending.approval_challenge,
+    )
+    assert replayed.decision is Decision.DENY
+
+
+def test_needs_approval_does_not_consume_rate_budget():
+    approvals = ApprovalAuthority(b"secret")
+    engine = _engine(approvals=approvals, capacity=1)
+
+    # Two NEEDS_APPROVAL round-trips must not exhaust a capacity-1 bucket...
+    engine.evaluate(_principal(), _request(), requires_approval=True)
+    engine.evaluate(_principal(), _request(), requires_approval=True)
+
+    # ...so a single approved action still has budget to spend exactly once.
+    pending = engine.evaluate(_principal(), _request(), requires_approval=True)
+    token = approvals.sign(json.loads(pending.approval_challenge))
+    approved = engine.evaluate(
+        _principal(),
+        _request(),
+        requires_approval=True,
+        approval_token=token,
+        approval_challenge=pending.approval_challenge,
     )
     assert approved.decision is Decision.ALLOW
 

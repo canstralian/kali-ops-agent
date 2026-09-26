@@ -41,6 +41,7 @@ class GovernedTool(ABC):
         action: str = "default",
         arguments: dict[str, str] | None = None,
         approval_token: str | None = None,
+        approval_challenge: str | None = None,
     ) -> dict[str, object]:
         request = ToolRequest(
             tool=self.name,
@@ -54,6 +55,7 @@ class GovernedTool(ABC):
             min_tier=self.min_tier,
             requires_approval=self.requires_approval,
             approval_token=approval_token,
+            approval_challenge=approval_challenge,
         )
         if verdict.decision is not Decision.ALLOW:
             return {

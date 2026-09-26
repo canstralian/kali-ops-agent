@@ -52,17 +52,24 @@ def create_server(config: EngagementConfig):
     recon = ReconStub(engine)
     mcp = FastMCP("kali-ops-agent")
 
+    # The principal is bound to the server's engagement context, NOT taken from a
+    # tool argument. A client-supplied identity would be spoofable: a caller could
+    # rotate it to reset its own rate-limit bucket and mis-attribute audit entries,
+    # defeating the limiter's whole purpose. A production deployment should derive
+    # this identity from the authenticated MCP session/transport rather than the
+    # single configured operator used here.
+    principal = Principal(
+        id=config.operator_id,
+        tier=AuthorityTier.USER,
+        engagement_id=config.engagement_id,
+    )
+
     @mcp.tool()
-    def recon_stub(principal_id: str, target: str, action: str = "default") -> dict:
+    def recon_stub(target: str, action: str = "default") -> dict:
         """Governed reconnaissance template (no-op). Demonstrates the full policy
-        path: authority, scope hard-block, rate budget, and audit. Replace with a
-        real, authorized adapter per engagement.
+        path: authority, scope hard-block, approval, rate budget, and audit.
+        Replace with a real, authorized adapter per engagement.
         """
-        principal = Principal(
-            id=principal_id,
-            tier=AuthorityTier.USER,
-            engagement_id=config.engagement_id,
-        )
         return recon.run(principal, target, action=action)
 
     return mcp
