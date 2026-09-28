@@ -1,0 +1,46 @@
+name: CodeQL
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  schedule:
+    # Weekly, so newly-added CodeQL queries surface against the tree even
+    # without a push. Offset from the pip-audit/bandit schedule.
+    - cron: "23 5 * * 1"
+
+# Least privilege at the workflow level: read-only. The analyze job widens
+# only itself, and only to what SARIF upload requires (see below).
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: CodeQL analysis (python)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Required to upload the SARIF results to the repository's Security tab.
+      # Scoped to this job, not granted workflow-wide.
+      security-events: write
+      # Lets CodeQL read workflow run status on private repositories.
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          languages: python
+          # Pure-Python project: no compilation, so no build step is needed.
+          build-mode: none
+          # security-extended adds the higher-signal security queries on top of
+          # the default set, at the cost of a longer run.
+          queries: security-extended
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          category: "/language:python"
