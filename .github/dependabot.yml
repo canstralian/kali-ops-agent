@@ -1,0 +1,38 @@
+version: 2
+updates:
+  # Keep GitHub Actions pinned-SHA references current. This is the ongoing
+  # maintenance for the SHA-pinning in .github/workflows/ci.yml: Dependabot
+  # opens PRs that bump each pinned commit to the latest release SHA.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+  # Python dependencies declared in pyproject.toml (core + optional extras).
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "build"
+    labels:
+      - "dependencies"
+      - "python"
+    groups:
+      # Batch dev/lint tooling bumps into one PR to reduce review churn.
+      dev-tooling:
+        patterns:
+          - "pytest*"
+          - "ruff"
+    ignore:
+      # The `mcp` server extra is pinned <2 on purpose: MCP SDK v2 removed
+      # mcp.server.fastmcp.FastMCP, which server.py imports. Lifting the ceiling
+      # is a code migration, not a dependency bump, so suppress major-version
+      # widening here (security updates still come through).
+      - dependency-name: "mcp"
+        update-types: ["version-update:semver-major"]
